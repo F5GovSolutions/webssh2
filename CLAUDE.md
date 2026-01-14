@@ -21,12 +21,16 @@ The `.github/workflows/sync-upstream.yml` workflow:
 
 1. **Runs daily** at 6:00 AM UTC (and can be triggered manually)
 2. **Syncs all tags** from upstream automatically
-3. **Creates a PR** when the main branch has new commits from upstream
-4. **Optionally syncs release artifacts** when manually triggered with `sync_releases: true`
+3. **Merges upstream changes** into a PR branch (preserves local customizations)
+4. **Creates a PR** when the main branch has new commits from upstream
+5. **Optionally syncs release artifacts** when manually triggered with `sync_releases: true`
+
+The sync uses `git merge` rather than replacing our main branch, so our local customizations (like the removed npm/Docker publishing) are preserved unless upstream modifies the same lines.
 
 When a sync PR is created:
 - Review the changes for any security concerns
 - Verify CI passes
+- Check for merge conflicts (indicates upstream changed files we've customized)
 - Merge when ready (no auto-merge to allow review)
 
 ## Release Process
@@ -37,9 +41,10 @@ This fork uses the same release tooling as upstream (release-please). The releas
 2. **Release-please creates release PR** - Automatically based on conventional commits
 3. **Merge release PR** - Creates tag `webssh2-server-v<version>`
 4. **Automated release** - Builds and publishes:
-   - npm package
-   - Docker images (Docker Hub + GHCR)
    - Release artifacts (`webssh2-<version>.tar.gz` + `.sha256`)
+   - Notifies downstream repository
+
+**Note:** Unlike upstream, this fork does NOT publish npm packages or Docker images (see Intentional Divergences below).
 
 ### Downstream Consumer
 
@@ -47,6 +52,19 @@ The `F5GovSolutions/nginx-webssh2` repository consumes releases from this fork v
 
 - Tags named: `webssh2-server-v<version>`
 - Release assets: `webssh2-<version>.tar.gz` and `webssh2-<version>.tar.gz.sha256`
+
+## Intentional Divergences from Upstream
+
+This fork has the following intentional differences from upstream that are preserved through merge-based syncing:
+
+| File | Change | Reason |
+|------|--------|--------|
+| `.github/workflows/release-please.yml` | Removed npm publish | Upstream publishes the npm package; we don't want duplicates |
+| `.github/workflows/release-please.yml` | Removed Docker build trigger | Docker images are built in `F5GovSolutions/nginx-webssh2` |
+| `.github/workflows/sync-upstream.yml` | Fork-specific | Does not exist in upstream |
+| `CLAUDE.md` | Fork-specific | Does not exist in upstream |
+
+If upstream modifies `release-please.yml` in ways that conflict with our changes, the sync workflow will detect merge conflicts and require manual resolution.
 
 ## Patching Policy
 
@@ -103,11 +121,10 @@ npm run lint
 
 For the sync and release workflows to function fully:
 
-- `GITHUB_TOKEN` - Automatically provided, used for PRs and releases
-- `NPM_TOKEN` - For npm publishing
-- `DOCKER_USERNAME` / `DOCKER_TOKEN` - For Docker Hub publishing
+- `GITHUB_TOKEN` - Automatically provided, used for releases
+- `SYNC_PAT` - Personal Access Token with `repo` scope for creating sync PRs (required for forked repos)
 - `DOWNSTREAM_TOKEN` / `DOWNSTREAM_REPO` - For notifying downstream consumers
-- `UPSTREAM_SYNC_TOKEN` - (Optional) Token with `repo` scope for syncing release artifacts from upstream
+- `UPSTREAM_SYNC_TOKEN` - (Optional) Token for syncing release artifacts from upstream
 
 ## Important Notes for AI Assistants
 

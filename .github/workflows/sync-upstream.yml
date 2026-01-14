@@ -105,16 +105,16 @@ jobs:
           # Fetch upstream main
           git fetch upstream main
 
-          # Check if there are differences
-          if git diff --quiet main upstream/main; then
-            echo "No changes from upstream"
+          # Check if there are new commits from upstream
+          if [ -z "$(git rev-list main..upstream/main)" ]; then
+            echo "No new commits from upstream"
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Changes detected from upstream"
+            echo "New commits detected from upstream"
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
 
             # Show what changed
-            echo "## Changes from upstream:" >> "$GITHUB_STEP_SUMMARY"
+            echo "## New commits from upstream:" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             git log main..upstream/main --oneline | head -20 >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -131,16 +131,26 @@ jobs:
           # Create branch name with date
           branch_name="sync-upstream-$(date +%Y%m%d)"
 
-          # Check if branch already exists
-          if git ls-remote --heads origin "$branch_name" | grep -q "$branch_name"; then
-            echo "Branch $branch_name already exists, updating it..."
-            git checkout -B "$branch_name" upstream/main
-            git push origin "$branch_name" --force
-          else
-            echo "Creating new branch $branch_name..."
-            git checkout -b "$branch_name" upstream/main
-            git push origin "$branch_name"
+          # Start from main and merge upstream (preserves local changes)
+          git checkout -B "$branch_name" main
+
+          # Merge upstream - this preserves our local customizations
+          # Use -X theirs for conflicts in non-critical files, but this should rarely happen
+          if ! git merge upstream/main --no-edit -m "Merge upstream billchurch/webssh2 into main"; then
+            echo "::warning::Merge conflicts detected - manual resolution may be needed"
+            # Show conflicts in summary
+            echo "## Merge Conflicts" >> "$GITHUB_STEP_SUMMARY"
+            echo "The following files have conflicts that need manual resolution:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            git diff --name-only --diff-filter=U >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            # Abort and exit - manual intervention needed
+            git merge --abort
+            echo "has_conflicts=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          git push origin "$branch_name" --force
 
           # Check if PR already exists for this branch
           existing_pr=$(gh pr list --head "$branch_name" --json number --jq '.[0].number // empty')
