@@ -1,0 +1,151 @@
+name: Build Release on Tag
+
+on:
+  push:
+    tags:
+      - 'webssh2-server-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g., webssh2-server-v3.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#webssh2-server-v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if release exists
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "Release already exists, skipping"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: steps.check.outputs.exists == 'false'
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.check.outputs.exists == 'false'
+        with:
+          node-version: 22
+
+      - run: npm ci --ignore-scripts
+        if: steps.check.outputs.exists == 'false'
+
+      - run: npm run build
+        if: steps.check.outputs.exists == 'false'
+
+      - name: Create release artifact
+        if: steps.check.outputs.exists == 'false'
+        env:
+          RELEASE_ARTIFACT_DIR: release-artifacts
+        run: node dist/scripts/create-release-artifact.js
+
+      - name: Create GitHub release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          gh release create "$TAG" \
+            --title "WebSSH2 $VERSION" \
+            --notes "Release $VERSION (synced from upstream)" \
+            release-artifacts/webssh2-*.tar.gz \
+            release-artifacts/webssh2-*.tar.gz.sha256
+
+      - name: Dispatch downstream repository
+        if: steps.check.outputs.exists == 'false'
+        env:
+          DISPATCH_REPO: ${{ secrets.DOWNSTREAM_REPO }}
+          DOWNSTREAM_TOKEN: ${{ secrets.DOWNSTREAM_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOWNSTREAM_TOKEN:-}" ]; then
+            echo 'DOWNSTREAM_TOKEN secret is not configured' >&2
+            exit 1
+          fi
+
+          if [ -z "${DISPATCH_REPO:-}" ]; then
+            echo 'DISPATCH_REPO secret is not configured' >&2
+            exit 1
+          fi
+
+          payload=$(jq -n --arg version "${RELEASE_TAG}" \
+            '{event_type:"webssh2-release", client_payload:{version:$version}}')
+
+          response_file=$(mktemp)
+          error_file=$(mktemp)
+          http_code=''
+          curl_status=0
+
+          set +e
+          http_code=$(curl \
+            --silent \
+            --show-error \
+            --write-out '%{http_code}' \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DOWNSTREAM_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/${DISPATCH_REPO}/dispatches \
+            -d "${payload}" \
+            -o "${response_file}" 2>"${error_file}")
+          curl_status=$?
+          set -e
+
+          response_body=$(cat "${response_file}")
+          rm -f "${response_file}"
+
+          if [ -s "${error_file}" ]; then
+            echo "Dispatch stderr:"
+            cat "${error_file}" >&2
+          fi
+          rm -f "${error_file}"
+
+          if [ "${curl_status}" -ne 0 ]; then
+            echo "Dispatch request failed with exit code ${curl_status}" >&2
+            exit "${curl_status}"
+          fi
+
+          if [ -z "${http_code}" ]; then
+            echo 'Dispatch request did not return an HTTP status code' >&2
+            exit 1
+          fi
+
+          if [ "${http_code}" -ge 300 ]; then
+            echo "Dispatch request returned HTTP ${http_code}" >&2
+            if [ -n "${response_body}" ]; then
+              echo "Response body: ${response_body}" >&2
+            fi
+            exit 1
+          fi
+
+          if [ -n "${response_body}" ]; then
+            echo "Dispatch response: ${response_body}"
+          fi
+
+          echo "Dispatched webssh2-release for tag ${RELEASE_TAG}"

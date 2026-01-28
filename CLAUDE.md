@@ -62,6 +62,7 @@ This fork has the following intentional differences from upstream that are prese
 | `.github/workflows/release-please.yml` | Removed npm publish | Upstream publishes the npm package; we don't want duplicates |
 | `.github/workflows/release-please.yml` | Removed Docker build trigger | Docker images are built in `F5GovSolutions/nginx-webssh2` |
 | `.github/workflows/sync-upstream.yml` | Fork-specific | Does not exist in upstream |
+| `.github/workflows/build-release-on-tag.yml` | Fork-specific | Builds artifacts when synced tags are pushed |
 | `CLAUDE.md` | Fork-specific | Does not exist in upstream |
 
 If upstream modifies `release-please.yml` in ways that conflict with our changes, the sync workflow will detect merge conflicts and require manual resolution.
