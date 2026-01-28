@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.2.0](https://github.com/F5GovSolutions/webssh2/compare/webssh2-server-v3.1.0...webssh2-server-v3.2.0) (2026-01-28)
+
+
+### Features
+
+* add build-release-on-tag workflow for automated artifact creation ([529e301](https://github.com/F5GovSolutions/webssh2/commit/529e3015b45725ecae30e27e6eb401aee5556679))
+* add upstream sync workflow and CLAUDE.md documentation ([1e8723b](https://github.com/F5GovSolutions/webssh2/commit/1e8723b8256c52d7195ae9a333bb2e69244fe068))
+* use merge-based sync and remove npm/Docker publishing ([d055cd8](https://github.com/F5GovSolutions/webssh2/commit/d055cd80e591827bce919fef33dab2bcff01c618))
+
+
+### Bug Fixes
+
+* use PAT for PR creation in forked repos ([942a10d](https://github.com/F5GovSolutions/webssh2/commit/942a10dcf703317eba36352307b9660f8dc2b695))
+
 ## [3.1.0](https://github.com/billchurch/webssh2/compare/webssh2-server-v3.0.0...webssh2-server-v3.1.0) (2026-01-13)
 
 
