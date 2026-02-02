@@ -35,6 +35,8 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          # Use PAT with workflow scope to push tags that may include workflow file changes
+          token: ${{ secrets.SYNC_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Sync tags from upstream
         id: sync

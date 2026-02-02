@@ -77,22 +77,13 @@ jobs:
             release-artifacts/webssh2-*.tar.gz.sha256
 
       - name: Dispatch downstream repository
-        if: steps.check.outputs.exists == 'false'
+        if: steps.check.outputs.exists == 'false' && secrets.DOWNSTREAM_TOKEN != '' && secrets.DOWNSTREAM_REPO != ''
         env:
           DISPATCH_REPO: ${{ secrets.DOWNSTREAM_REPO }}
           DOWNSTREAM_TOKEN: ${{ secrets.DOWNSTREAM_TOKEN }}
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ -z "${DOWNSTREAM_TOKEN:-}" ]; then
-            echo 'DOWNSTREAM_TOKEN secret is not configured' >&2
-            exit 1
-          fi
-
-          if [ -z "${DISPATCH_REPO:-}" ]; then
-            echo 'DISPATCH_REPO secret is not configured' >&2
-            exit 1
-          fi
 
           payload=$(jq -n --arg version "${RELEASE_TAG}" \
             '{event_type:"webssh2-release", client_payload:{version:$version}}')
